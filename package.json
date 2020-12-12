@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/magicd-ops/magic-mongodb#readme",
   "dependencies": {
-    "mongodb": "^3.6.3"
+    "mongodb": "^3.6.3",
+    "uuid": "^8.3.2"
   }
 }
