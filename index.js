@@ -3,6 +3,7 @@
  * Use url , options to connect to mongodb
  */
 let MongoClient = require('mongodb').MongoClient;
+let { ObjectId } = require('mongodb');
 let {v4: uuidv4} = require('uuid');
 
 let databaseFunc = (databaseData) => new MongoDB(databaseData);
@@ -47,6 +48,19 @@ class MongoDB extends MongoClient {
             }
         }, 100);
     }
+
+    syncQuery(query){
+        query = query ? query : {};
+        if(query._id){
+            query._id = ObjectId(query._id);
+        }
+        if(query.id){
+            query._id = ObjectId(query.id);
+            delete query.id;
+        }
+        return query;
+    }
+
     async dbConnect(){
         await this.connect({}, err => {
             if(err) throw err;
@@ -63,42 +77,113 @@ class MongoDB extends MongoClient {
             }
         });
     }
+
     // check if table exist
     async checkExist(collectionName){
         return await(await this.dbo.listCollections().toArray()).findIndex((item) => item.name === collectionName) !== -1;
     }
+
+    createCode(){
+        let code = uuidv4();
+        this.processCodes.push(code);
+        return code;
+    }
+
+    emitCall(code, result){
+        if(this.processCodes.indexOf(code) < 0){
+            this.emit(`call-${code}`, result);
+        } else {
+            this.processCodes = this.processCodes.filter(c => c != code);
+        }
+    }
+
     /**
      * get data from db table ( this.dbo )
      * @param {string} collectionName Name of table
-     * @param {object} query selected Query
+     * @param {object} options selected Query {query: ''}
     */
-    async getData(data){
-        let code = uuidv4();
-        this.processCodes.push(code);
+    async getData(collectionName, options){
+        let code = this.createCode();
         if(this.dbo){
-            let { collectionName, query } = data;
+            if(!options) options = {};
+            let { query, sort } = options;
+            options.query = this.syncQuery(options.query);
+            if(!query) query = {};
+            if(!sort) sort = {};
             const exists = await this.checkExist(collectionName);
             if(exists){
                 // get data from selected table with query ( use {} when should get all data)
-                await this.dbo.collection(collectionName).find(query).toArray((err, result) => {
+                await this.dbo.collection(collectionName).find(query).sort(sort).toArray((err, result) => {
                     if(err) throw err;
-                    if(this.processCodes.indexOf(code) < 0){
-                        this.emit(`call-${code}`, result);
-                    } else {
-                        this.processCodes = this.processCodes.filter(c => c != code);
-                    }
+                    this.emitCall(code, result);
                 });
             } else {
-                if(this.processCodes.indexOf(code) < 0){
-                    // if table does not exist return false;
-                    this.emit(`call-${code}`, false);
-                } else {
-                    this.processCodes = this.processCodes.filter(c => c != code);
-                }
+                this.emitCall(code, false);
             }
         } else {
             // if db is not ready yet , will call dbReady until this.dbo is ready
-            this.dbReady(this.getEv, data);
+            this.dbReady(this.getData, data);
+        }
+    }
+    /**
+     * 
+     * @param {string} collectionName 
+     * @param {any} data - it can be array of objects or a single object
+     * @param {object} options 
+     */
+    async createData(collectionName, data, options = {}){
+        let code = this.createCode();
+        if(this.dbo){
+            const exists = await this.checkExist(collectionName);
+            if(exists){
+                if(!data.length){
+                    await this.dbo.collection(collectionName).insertOne(data, (err, result) => {
+                        if(err) throw err;
+                        this.emitCall(code, result.ops);
+                    });
+                } else {
+                    await this.dbo.collection(collectionName).insertMany(data, (err, result) => {
+                        if(err) throw err;
+                        this.emitCall(code, result.ops);
+                    });
+                }
+            } else {
+                this.emitCall(code, false);
+            }
+        } else {
+            // if db is not ready yet , will call dbReady until this.dbo is ready
+            this.dbReady(this.createData, data);
+        }
+    }
+
+    async updateData(collectionName, data, options = {}){
+        let code = this.createCode();
+        options.type = options.type ? options.type : 'one'; // one , many
+        options.query = this.syncQuery(options.query);
+
+        data = { $set: data };
+        if(this.dbo){
+            const exists = await this.checkExist(collectionName);
+            if(exists){
+                switch(options.type){
+                    case 'one':
+                        await this.dbo.collection(collectionName).updateOne(options.query, data, (err, {result}) => {
+                            if(err) throw err;
+                            this.emitCall(code, result);
+                        });
+                        break;
+                    case 'many':
+                        await this.dbo.collection(collectionName).updateMany(options.query, data, (err, {result}) => {
+                            if(err) throw err;
+                            this.emitCall(code, result);
+                        });
+                }
+            } else {
+                this.emitCall(code, false);
+            }
+        } else {
+            // if db is not ready yet , will call dbReady until this.dbo is ready
+            this.dbReady(this.createData, data);
         }
     }
 }
