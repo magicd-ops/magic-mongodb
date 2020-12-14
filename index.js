@@ -2,8 +2,7 @@
  * Create Class instance extends from MongoClient
  * Use url , options to connect to mongodb
  */
-let MongoClient = require('mongodb').MongoClient;
-let { ObjectId } = require('mongodb');
+let { MongoClient, ObjectId } = require('mongodb');
 let {v4: uuidv4} = require('uuid');
 
 let databaseFunc = (databaseData) => new MongoDB(databaseData);
@@ -44,7 +43,7 @@ class MongoDB extends MongoClient {
             if(!this.dbo){
                 this.dbReady(func, data);
             } else {
-                func.call(this, data);
+                func.call(this, ...data);
             }
         }, 100);
     }
@@ -122,7 +121,7 @@ class MongoDB extends MongoClient {
             }
         } else {
             // if db is not ready yet , will call dbReady until this.dbo is ready
-            this.dbReady(this.getData, data);
+            this.dbReady(this.getData, {collectionName, options});
         }
     }
     /**
@@ -152,7 +151,7 @@ class MongoDB extends MongoClient {
             }
         } else {
             // if db is not ready yet , will call dbReady until this.dbo is ready
-            this.dbReady(this.createData, data);
+            this.dbReady(this.createData, {collectionName, data, options});
         }
     }
 
@@ -183,7 +182,37 @@ class MongoDB extends MongoClient {
             }
         } else {
             // if db is not ready yet , will call dbReady until this.dbo is ready
-            this.dbReady(this.createData, data);
+            this.dbReady(this.updateData, {collectionName, data, options});
+        }
+    }
+	
+	async deleteData(collectionName, options = {}){
+        let code = this.createCode();
+        options.type = options.type ? options.type : 'one'; // one , many
+        options.query = this.syncQuery(options.query);
+
+        if(this.dbo){
+            const exists = await this.checkExist(collectionName);
+            if(exists){
+                switch(options.type){
+                    case 'one':
+                        await this.dbo.collection(collectionName).deleteOne(options.query, (err, {result}) => {
+                            if(err) throw err;
+                            this.emitCall(code, result);
+                        });
+                        break;
+                    case 'many':
+                        await this.dbo.collection(collectionName).deleteMany(options.query, (err, {result}) => {
+                            if(err) throw err;
+                            this.emitCall(code, result);
+                        });
+                }
+            } else {
+                this.emitCall(code, false);
+            }
+        } else {
+            // if db is not ready yet , will call dbReady until this.dbo is ready
+            this.dbReady(this.deleteData, {collectionName, options});
         }
     }
 }
