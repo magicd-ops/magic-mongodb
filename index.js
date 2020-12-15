@@ -53,10 +53,6 @@ class MongoDB extends MongoClient {
         if(query._id){
             query._id = ObjectId(query._id);
         }
-        if(query.id){
-            query._id = ObjectId(query.id);
-            delete query.id;
-        }
         return query;
     }
 
