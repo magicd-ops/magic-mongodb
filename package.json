@@ -1,6 +1,6 @@
 {
   "name": "magic-mongodb",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Create a minimal mongodb connection Package",
   "main": "index.js",
   "scripts": {
