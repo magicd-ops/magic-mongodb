@@ -211,7 +211,7 @@ class MongoDB extends MongoClient {
     async updateData(collectionName, data, options = {}){
         let code = this.#createCode();
         options = this.#updateUpdateOptions({options});
-
+        if(data._id) delete(data._id); // delete _id from data on edit mode
         data = { $set: data };
         if(this.dbo){
             const exists = await this.#checkExist(collectionName);
